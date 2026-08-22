@@ -1,0 +1,48 @@
+* {
+	margin: 0;
+	padding: 0;
+	border: 0;
+	vertical-align: top;
+	color: inherit;
+	line-height: inherit;
+	font-size: inherit;
+	font-family: inherit;
+	font-weight: inherit;
+	box-sizing: border-box;
+}
+html,
+body {
+	height: 100%;
+	width: 100%;
+}
+body {
+	background-color: #000;
+	color: #9f0;
+	line-height: 16px;
+	font-size: 16px;
+	font-family: monaco, monospace;
+	font-weight: normal;
+	padding: 16px;
+}
+
+#inspiration {
+	/*position: fixed;*/
+	/*z-index: 10000;*/
+	/*top: 0;*/
+	/*bottom: 0;*/
+	/*left: 0;*/
+	/*right: 0;*/
+	/*overflow-y: scroll;*/
+	padding: 2rem;
+	margin: auto;
+	background-color: #000;
+	display: flex;
+	flex-direction: row;
+	flex-wrap: wrap;
+}
+#inspiration h2 {
+	width: 100%;
+}
+#inspiration p {
+	width: 50%;
+}
