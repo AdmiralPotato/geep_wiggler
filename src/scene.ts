@@ -1,10 +1,15 @@
 import {
+	type Bone,
+	type Object3D,
 	Scene,
 	WebGLRenderer,
 	PerspectiveCamera,
 	Mesh,
 	HemisphereLight,
-	PlaneGeometry,
+	BoxGeometry,
+	Vector3,
+	SphereGeometry,
+	MeshBasicMaterial,
 	PointLight,
 	MeshStandardMaterial,
 	PCFShadowMap,
@@ -12,9 +17,16 @@ import {
 
 import { GUI } from 'three/examples/jsm/libs/lil-gui.module.min.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
+import { RapierPhysics } from 'three/addons/physics/RapierPhysics.js';
 
 const TAU = Math.PI / 2;
+
+const gltfLoader = new GLTFLoader();
+const [physics, geepLTF] = await Promise.all([
+	RapierPhysics(),
+	new Promise<GLTF>((resolve) => gltfLoader.load('geep.glb', resolve)),
+]);
 
 const params = {
 	animate: true,
@@ -23,7 +35,6 @@ const params = {
 const renderer = new WebGLRenderer({ antialias: true, alpha: true });
 renderer.setClearColor(0x333333, 1.0);
 renderer.setPixelRatio(window.devicePixelRatio);
-renderer.setAnimationLoop(animate);
 export const canvas = renderer.domElement;
 
 const scene = new Scene();
@@ -82,29 +93,33 @@ gui.add(params, 'animate');
 
 // end init gui
 
-const url = 'geep.glb';
-const gltfLoader = new GLTFLoader();
-const geepParent = new Mesh();
-geepParent.position.y = -1.5;
+const geepParentMesh = new SphereGeometry(4, 6, 4);
+const geepParentMaterial = new MeshBasicMaterial({ wireframe: true });
+const geepParent = new Mesh(geepParentMesh, geepParentMaterial);
+scene.add(geepParent);
+
+const geepScene = geepLTF.scene;
+geepScene.traverse(function (child) {
+	if (child.isObject3D) {
+		child.castShadow = true;
+	}
+});
+const geep = geepScene.getObjectByName('geep_bones') as Object3D;
+const hip = geepScene.getObjectByName('hip') as Bone;
+
+geep.position.y = -5;
+geepParent.userData.physics = { mass: 1, restitution: 1 };
+geepParent.add(geepScene);
+
 const floorSize = 100;
-const floorPlane = new PlaneGeometry(floorSize, floorSize);
-floorPlane.rotateX(-TAU);
+const floorPlane = new BoxGeometry(floorSize, floorSize, 0.5);
 const floorMaterial = new MeshStandardMaterial();
 const floorPlaneMesh = new Mesh(floorPlane, floorMaterial);
+floorPlaneMesh.rotation.x = -TAU;
 floorPlaneMesh.receiveShadow = true;
-floorPlaneMesh.position.y = -1.5;
+floorPlaneMesh.position.y = -7;
+floorPlaneMesh.userData.physics = { mass: 0, restitution: 1 };
 scene.add(floorPlaneMesh);
-scene.add(geepParent);
-gltfLoader.load(url, (gltf) => {
-	const geep = gltf.scene;
-	geep.traverse(function (child) {
-		if (child.isObject3D) {
-			child.castShadow = true;
-		}
-	});
-	// geep.castShadow = true;
-	geepParent.add(geep);
-});
 
 let lastTime = performance.now();
 function animate() {
@@ -112,9 +127,13 @@ function animate() {
 	const now = performance.now() / 1000;
 	const delta = now - lastTime;
 	lastTime = now;
-	geepParent.rotation.y += 0.5 * delta;
+	geep.rotation.y += 0.5 * delta;
+	hip.rotation.x = Math.PI * (0.75 - Math.cos(geep.rotation.y * 32) * 0.25);
 	renderer.render(scene, camera);
 }
+renderer.setAnimationLoop(animate);
+physics.addScene(scene);
+physics.setMeshVelocity(geepParent, new Vector3(0, 10, 0));
 
 export const cleanup = () => {
 	gui.destroy();
@@ -129,4 +148,7 @@ Object.assign(window, {
 	geepParent,
 	pointLight,
 	floorPlane,
+	geep,
+	hip,
+	physics,
 });
