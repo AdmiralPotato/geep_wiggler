@@ -112,10 +112,9 @@ geepParent.userData.physics = { mass: 1, restitution: 1 };
 geepParent.add(geepScene);
 
 const floorSize = 100;
-const floorPlane = new BoxGeometry(floorSize, floorSize, 0.5);
+const floorPlane = new BoxGeometry(floorSize, 0.5, floorSize);
 const floorMaterial = new MeshStandardMaterial();
 const floorPlaneMesh = new Mesh(floorPlane, floorMaterial);
-floorPlaneMesh.rotation.x = -TAU;
 floorPlaneMesh.receiveShadow = true;
 floorPlaneMesh.position.y = -7;
 floorPlaneMesh.userData.physics = { mass: 0, restitution: 1 };
@@ -128,7 +127,7 @@ function animate() {
 	const delta = now - lastTime;
 	lastTime = now;
 	geep.rotation.y += 0.5 * delta;
-	hip.rotation.x = Math.PI * (0.75 - Math.cos(geep.rotation.y * 32) * 0.25);
+	hip.rotation.x = TAU * (1.5 - Math.cos(geep.rotation.y * 32) * 0.25);
 	renderer.render(scene, camera);
 }
 renderer.setAnimationLoop(animate);
