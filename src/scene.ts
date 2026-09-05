@@ -13,6 +13,7 @@ import {
 	PointLight,
 	MeshStandardMaterial,
 	PCFShadowMap,
+	Object3D,
 } from 'three';
 
 import { GUI } from 'three/examples/jsm/libs/lil-gui.module.min.js';
@@ -29,7 +30,9 @@ const [physics, geepLTF] = await Promise.all([
 ]);
 
 const params = {
-	animate: true,
+	geepWiggleSpeed: 100,
+	geepWiggleIntensity: 1,
+	geepSpinSpeed: 100,
 };
 
 const renderer = new WebGLRenderer({ antialias: true, alpha: true });
@@ -89,7 +92,9 @@ c.far = 30;
 
 const gui = new GUI();
 
-gui.add(params, 'animate');
+gui.add(params, 'geepWiggleSpeed', 0, 400);
+gui.add(params, 'geepWiggleIntensity', 0, 2);
+gui.add(params, 'geepSpinSpeed', 0, 400);
 
 // end init gui
 
@@ -104,7 +109,8 @@ geepScene.traverse(function (child) {
 		child.castShadow = true;
 	}
 });
-const geep = geepScene.getObjectByName('geep') as SkinnedMesh;
+const geepBones = geepScene.getObjectByName('geep_bones') as Object3D;
+const geep = geepScene.getObjectByName('geep_bones') as SkinnedMesh;
 // const hip = geepScene.getObjectByName('hip') as Bone;
 const legL = geepScene.getObjectByName('hind_1_L') as Bone;
 const legR = geepScene.getObjectByName('hind_1_R') as Bone;
@@ -113,8 +119,8 @@ const armR = geepScene.getObjectByName('leg_1_R') as Bone;
 const spine0 = geepScene.getObjectByName('spine_0') as Bone;
 const spine1 = geepScene.getObjectByName('spine_1') as Bone;
 console.log('geep', geep);
-geep.position.y = -4.125;
-geepParent.userData.physics = { mass: 1, restitution: 1 };
+geepBones.position.y = -4.125;
+geepParent.userData.physics = { mass: 1, restitution: 0.99 };
 geepParent.add(geepScene);
 
 const floorSize = 100;
@@ -130,15 +136,15 @@ let lastTime = performance.now();
 function animate() {
 	resize();
 	const now = performance.now() / 1000;
-	const delta = now - lastTime;
+	// const delta = now - lastTime;
 	lastTime = now;
-	geep.rotation.y += TAU * 0.025 * delta;
-	const phase = geep.rotation.y * 64;
+	geepBones.rotation.y = TAU * params.geepSpinSpeed * 0.005 * now;
+	const phase = params.geepWiggleSpeed * 0.1 * now;
 	// hip.rotation.x = TAU * (1.55 - Math.cos(phase) * 0.0625);
-	const limbs = TAU * Math.cos(phase) * 0.0625;
-	const legs = TAU * Math.cos(phase) * 0.125;
-	const spine = TAU * Math.cos(phase) * 0.025;
-	legL.rotation.z = -legs + TAU * -0.125;
+	const limbs = TAU * Math.cos(phase) * 0.0625 * params.geepWiggleIntensity;
+	const legs = TAU * Math.cos(phase) * 0.125 * params.geepWiggleIntensity;
+	const spine = TAU * Math.cos(phase) * 0.025 * params.geepWiggleIntensity;
+	legL.rotation.z = -legs + TAU * -0.625;
 	legR.rotation.z = legs + TAU * 0.625;
 	armL.rotation.z = limbs + TAU * 0.125;
 	armR.rotation.z = -limbs + TAU * -0.125;
@@ -163,6 +169,7 @@ Object.assign(window, {
 	geepParent,
 	pointLight,
 	floorPlane,
+	geepScene,
 	geep,
 	hip: legL,
 	physics,
