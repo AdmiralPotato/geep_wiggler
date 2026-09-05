@@ -1,6 +1,6 @@
 import {
 	type Bone,
-	type Object3D,
+	type SkinnedMesh,
 	Scene,
 	WebGLRenderer,
 	PerspectiveCamera,
@@ -20,7 +20,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { RapierPhysics } from 'three/addons/physics/RapierPhysics.js';
 
-const TAU = Math.PI / 2;
+const TAU = Math.PI * 2;
 
 const gltfLoader = new GLTFLoader();
 const [physics, geepLTF] = await Promise.all([
@@ -104,10 +104,16 @@ geepScene.traverse(function (child) {
 		child.castShadow = true;
 	}
 });
-const geep = geepScene.getObjectByName('geep_bones') as Object3D;
-const hip = geepScene.getObjectByName('hip') as Bone;
-
-geep.position.y = -5;
+const geep = geepScene.getObjectByName('geep') as SkinnedMesh;
+// const hip = geepScene.getObjectByName('hip') as Bone;
+const legL = geepScene.getObjectByName('hind_1_L') as Bone;
+const legR = geepScene.getObjectByName('hind_1_R') as Bone;
+const armL = geepScene.getObjectByName('leg_1_L') as Bone;
+const armR = geepScene.getObjectByName('leg_1_R') as Bone;
+const spine0 = geepScene.getObjectByName('spine_0') as Bone;
+const spine1 = geepScene.getObjectByName('spine_1') as Bone;
+console.log('geep', geep);
+geep.position.y = -4.125;
 geepParent.userData.physics = { mass: 1, restitution: 1 };
 geepParent.add(geepScene);
 
@@ -126,13 +132,23 @@ function animate() {
 	const now = performance.now() / 1000;
 	const delta = now - lastTime;
 	lastTime = now;
-	geep.rotation.y += 0.5 * delta;
-	hip.rotation.x = TAU * (1.5 - Math.cos(geep.rotation.y * 32) * 0.25);
+	geep.rotation.y += TAU * 0.025 * delta;
+	const phase = geep.rotation.y * 64;
+	// hip.rotation.x = TAU * (1.55 - Math.cos(phase) * 0.0625);
+	const limbs = TAU * Math.cos(phase) * 0.0625;
+	const legs = TAU * Math.cos(phase) * 0.125;
+	const spine = TAU * Math.cos(phase) * 0.025;
+	legL.rotation.z = -legs + TAU * -0.125;
+	legR.rotation.z = legs + TAU * 0.625;
+	armL.rotation.z = limbs + TAU * 0.125;
+	armR.rotation.z = -limbs + TAU * -0.125;
+	spine0.rotation.y = -spine;
+	spine1.rotation.x = -spine;
 	renderer.render(scene, camera);
 }
 renderer.setAnimationLoop(animate);
 physics.addScene(scene);
-physics.setMeshVelocity(geepParent, new Vector3(0, 10, 0));
+physics.setMeshVelocity(geepParent, new Vector3(0, 5, 0));
 
 export const cleanup = () => {
 	gui.destroy();
@@ -148,6 +164,6 @@ Object.assign(window, {
 	pointLight,
 	floorPlane,
 	geep,
-	hip,
+	hip: legL,
 	physics,
 });
