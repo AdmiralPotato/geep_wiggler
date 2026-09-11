@@ -21,6 +21,7 @@ import {
 	Quaternion,
 	ArrowHelper,
 	SkeletonHelper,
+	ConeGeometry,
 } from 'three';
 
 import { GUI } from 'three/examples/jsm/libs/lil-gui.module.min.js';
@@ -37,17 +38,23 @@ const [physics, geepLTF] = await Promise.all([
 	new Promise<GLTF>((resolve) => gltfLoader.load('geep.glb', resolve)),
 ]);
 const { RAPIER, world } = physics;
-
+const reset = () => {
+	const rigidBody: RigidBody = geepParent.userData.physics.body;
+	const zeroVec = new Vector3();
+	const zeroQuat = new Quaternion();
+	rigidBody.setTranslation(zeroVec, true);
+	rigidBody.setRotation(zeroQuat, true);
+	rigidBody.setAngvel(zeroQuat, true);
+	rigidBody.setLinvel(zeroVec, true);
+	controls.target.set(0, 0, 0);
+	controls.update();
+};
 const params = {
 	geepWiggleSpeed: 200,
 	geepWiggleIntensity: 1,
 	showPhysics: true,
-	reset() {
-		const rigidBody: RigidBody = geepParent.userData.physics.body;
-		rigidBody.setTranslation(new Vector3(), true);
-		rigidBody.setRotation(new Quaternion(), true);
-		rigidBody.resetForces(true);
-	},
+	cameraFollow: false,
+	reset,
 };
 
 const renderer = new WebGLRenderer({ antialias: true, alpha: true });
@@ -79,6 +86,8 @@ resize();
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.minDistance = 10;
 controls.maxDistance = 500;
+controls.enableDamping = true;
+controls.dampingFactor = 1;
 
 const hemisphereLight = new HemisphereLight(undefined, undefined, 1);
 scene.add(hemisphereLight);
@@ -112,6 +121,7 @@ const gui = new GUI();
 gui.add(params, 'geepWiggleSpeed', 0, 400);
 gui.add(params, 'geepWiggleIntensity', 0, 2);
 gui.add(params, 'showPhysics').name('Physics Debug Renderer');
+gui.add(params, 'cameraFollow').name('Camera Follows Geep');
 gui.add(params, 'reset');
 // end init gui
 
@@ -163,6 +173,38 @@ const legsShape = RAPIER.ColliderDesc.capsule(legLength, legRadius)
 	.setMass(1000)
 	.setRestitution(limbRestitution);
 const headShape = RAPIER.ColliderDesc.ball(legRadius).setMass(1000).setRestitution(limbRestitution);
+// reference: https://github.com/mrdoob/three.js/blob/083a11c06704e31f67f4fbcc988801dbff81e20c/examples/jsm/physics/RapierPhysics.js#L54-L74
+const getConvexShapeFromBufferGeometry = (geometry: BufferGeometry) => {
+	const vertices: number[] = [];
+	const vertex = new Vector3();
+	const position = geometry.getAttribute('position');
+
+	for (let i = 0; i < position.count; i++) {
+		vertex.fromBufferAttribute(position, i);
+		vertices.push(vertex.x, vertex.y, vertex.z);
+	}
+
+	/*
+	// only needed if we're making a trimesh, but this one is convexMesh
+	// if the buffer is non-indexed, generate an index buffer
+	const indices = Uint32Array.from(
+		geometry.getIndex() === null
+			? Array(Math.floor(vertices.length / 3)).keys()
+			: geometry.getIndex()!.array,
+	);
+	*/
+
+	return RAPIER.ColliderDesc.convexMesh(Float32Array.from(vertices))!;
+};
+const geepTopCollisionCone = new ConeGeometry(10, 8, 4);
+const geepTopCollisionMesh = new BufferGeometry();
+geepTopCollisionMesh.copy(geepTopCollisionCone);
+geepTopCollisionMesh.rotateX(Math.PI);
+geepTopCollisionMesh.translate(0, 3, 0);
+const topMeshShape = getConvexShapeFromBufferGeometry(geepTopCollisionMesh)
+	.setMass(0.1)
+	.setRestitution(3);
+const topMeshCollider = world.createCollider(topMeshShape, geepRigidBody);
 const armsCollider = world.createCollider(armsShape, geepRigidBody);
 const legsCollider = world.createCollider(legsShape, geepRigidBody);
 const headCollider = world.createCollider(headShape, geepRigidBody);
@@ -198,15 +240,6 @@ const headHelper = new ArrowHelper(new Vector3(1, 0, 0), undefined, 3, 0x0000ff)
 armR.add(armsPivotHelper);
 legL.add(legsPivotHelper);
 geepBones.getObjectByName('ear_L')!.add(headHelper);
-// const geepCollider = world.createCollider(geepParent.userData.physics.body, geepRigidBody);
-// const geepCollider = world.(geepParent.userData.physics.body, geepRigidBody);
-const wallSize: [number, number, number] = [1, 20, 20];
-const wallSpacing = 2.5;
-const lWallShape = RAPIER.ColliderDesc.cuboid(...wallSize).setTranslation(wallSpacing, 0, 0);
-const rWallShape = RAPIER.ColliderDesc.cuboid(...wallSize).setTranslation(-wallSpacing, 0, 0);
-const wallRigidBody = world.createRigidBody(RAPIER.RigidBodyDesc.fixed());
-world.createCollider(lWallShape, wallRigidBody);
-world.createCollider(rWallShape, wallRigidBody);
 
 const makeRapierDebug = () => {
 	const geometry = new BufferGeometry();
@@ -235,6 +268,15 @@ const flattenX = new Vector3(0, 1, 1);
 let lastTime = performance.now();
 function animate() {
 	resize();
+	if (geepParent.position.length() > 10) {
+		reset();
+	}
+	if (params.cameraFollow) {
+		const { x, y, z } = geepParent.position;
+		controls.target.set(x, y, z);
+		controls.update();
+	}
+
 	const now = performance.now() / 1000;
 	// const delta = now - lastTime;
 	lastTime = now;
@@ -290,6 +332,7 @@ Object.assign(window, {
 	legsShape,
 	armsRotation,
 	legsRotation,
+	topMeshCollider,
 	armsCollider,
 	legsCollider,
 	pointLight,
