@@ -172,7 +172,6 @@ const armsShape = RAPIER.ColliderDesc.capsule(legLength, legRadius)
 const legsShape = RAPIER.ColliderDesc.capsule(legLength, legRadius)
 	.setMass(1000)
 	.setRestitution(limbRestitution);
-const headShape = RAPIER.ColliderDesc.ball(legRadius).setMass(1000).setRestitution(limbRestitution);
 // reference: https://github.com/mrdoob/three.js/blob/083a11c06704e31f67f4fbcc988801dbff81e20c/examples/jsm/physics/RapierPhysics.js#L54-L74
 const getConvexShapeFromBufferGeometry = (geometry: BufferGeometry) => {
 	const vertices: number[] = [];
@@ -207,39 +206,44 @@ const topMeshShape = getConvexShapeFromBufferGeometry(geepTopCollisionMesh)
 const topMeshCollider = world.createCollider(topMeshShape, geepRigidBody);
 const armsCollider = world.createCollider(armsShape, geepRigidBody);
 const legsCollider = world.createCollider(legsShape, geepRigidBody);
-const headCollider = world.createCollider(headShape, geepRigidBody);
-
-const armsRotation = new Quaternion(1, 0, 0, 0);
-const armsRotationAxis = new Vector3(1, 0, 0);
-const legsRotation = new Quaternion(1, 0, 0, 0);
 const legsOffset = new Vector3(0, -legLength, 0);
 const armsOffset = new Vector3(0, legLength, 0);
 const applyPivotedColliderRotation = (
 	collider: Collider,
-	offset: Vector3,
 	pivot: Vector3,
-	rotation: Quaternion,
+	orientation: Orientation,
 ) => {
-	const rotatedPivot = new Vector3().sub(offset).applyQuaternion(rotation).add(pivot);
+	const { position, quaternion } = orientation;
+	const rotatedPivot = new Vector3().sub(pivot).applyQuaternion(quaternion).add(position);
 	collider.setTranslationWrtParent(rotatedPivot);
-	collider.setRotationWrtParent(rotation);
+	collider.setRotationWrtParent(quaternion);
 };
-const getRelativePosition = (child: Object3D, relativeParent: Object3D): Vector3 => {
-	const v = new Vector3();
-	v.copy(child.position);
-	child.localToWorld(v);
-	relativeParent.worldToLocal(v);
-	return v;
+type Orientation = {
+	position: Vector3;
+	quaternion: Quaternion;
 };
-const armsPivotHelper = new ArrowHelper(new Vector3(1, 0, 0), undefined, 3, 0x00ff00);
-const legsPivotHelper = new ArrowHelper(new Vector3(1, 0, 0), undefined, 3, 0xff0000);
-const headHelper = new ArrowHelper(new Vector3(1, 0, 0), undefined, 3, 0x0000ff);
+const getRelativeOrientationAndFlattenX = (
+	child: Object3D,
+	relativeParent: Object3D,
+): Orientation => {
+	relativeParent.updateMatrixWorld(true);
+	child.updateMatrixWorld(true);
+	const childWorld = child.matrixWorld;
+	const localMatrix = relativeParent.matrixWorld.clone().invert().multiply(childWorld);
+	const position = new Vector3();
+	const quaternion = new Quaternion();
+	localMatrix.decompose(position, quaternion, new Vector3());
+	position.setX(0);
+	return { position, quaternion };
+};
+// the vectors on the ArrowHelpers define orientation along the parent bone;
+// mandatory for propper collider orientation
+const armsPivotHelper = new ArrowHelper(new Vector3(0, -1, 0), undefined, 3, 0x00ff00);
+const legsPivotHelper = new ArrowHelper(new Vector3(0, 1, 0), undefined, 3, 0xff0000);
 (armsPivotHelper.line.material as MeshBasicMaterial).depthTest = false;
 (legsPivotHelper.line.material as MeshBasicMaterial).depthTest = false;
-(headHelper.line.material as MeshBasicMaterial).depthTest = false;
 armR.add(armsPivotHelper);
 legL.add(legsPivotHelper);
-geepBones.getObjectByName('ear_L')!.add(headHelper);
 
 const makeRapierDebug = () => {
 	const geometry = new BufferGeometry();
@@ -248,7 +252,7 @@ const makeRapierDebug = () => {
 		new LineBasicMaterial({ color: 0xffffff, vertexColors: true }),
 	);
 	mesh.frustumCulled = false;
-	const showList: Object3D[] = [mesh, skeletonHelper, armsPivotHelper, legsPivotHelper, headHelper];
+	const showList: Object3D[] = [mesh, skeletonHelper, armsPivotHelper, legsPivotHelper];
 	scene.add(mesh);
 	return () => {
 		if (params.showPhysics) {
@@ -264,7 +268,6 @@ const makeRapierDebug = () => {
 };
 const updateRapierDebug = makeRapierDebug();
 
-const flattenX = new Vector3(0, 1, 1);
 let lastTime = performance.now();
 function animate() {
 	resize();
@@ -292,24 +295,17 @@ function animate() {
 	armR.rotation.z = -arms + TAU * -0.125;
 	spine0.rotation.y = -spine;
 	spine1.rotation.x = -spine;
-	armsRotation.setFromAxisAngle(armsRotationAxis, TAU * -0.15 - arms - spine * 2);
-	legsRotation.setFromAxisAngle(armsRotationAxis, TAU * 0.625 + legs);
 	armsPivotHelper.position.x = 0;
 	legsPivotHelper.position.x = 0;
 	applyPivotedColliderRotation(
 		armsCollider,
 		armsOffset,
-		getRelativePosition(armsPivotHelper, geepParent).multiply(flattenX),
-		armsRotation,
+		getRelativeOrientationAndFlattenX(armsPivotHelper, geepParent),
 	);
 	applyPivotedColliderRotation(
 		legsCollider,
 		legsOffset,
-		getRelativePosition(legsPivotHelper, geepParent).multiply(flattenX),
-		legsRotation,
-	);
-	headCollider.setTranslationWrtParent(
-		getRelativePosition(headHelper, geepParent).multiply(flattenX),
+		getRelativeOrientationAndFlattenX(legsPivotHelper, geepParent),
 	);
 	updateRapierDebug();
 	renderer.render(scene, camera);
@@ -330,8 +326,6 @@ Object.assign(window, {
 	geepRigidBody,
 	armsShape,
 	legsShape,
-	armsRotation,
-	legsRotation,
 	topMeshCollider,
 	armsCollider,
 	legsCollider,
