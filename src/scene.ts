@@ -22,6 +22,8 @@ import {
 	ArrowHelper,
 	SkeletonHelper,
 	ConeGeometry,
+	TextureLoader,
+	RepeatWrapping,
 } from 'three';
 
 import { GUI } from 'three/examples/jsm/libs/lil-gui.module.min.js';
@@ -49,12 +51,22 @@ const reset = () => {
 	controls.target.set(0, 0, 0);
 	controls.update();
 };
+const textureFilenames: string[] = [
+	'floor_texture_0.png',
+	'floor_texture_1.png',
+	'floor_texture_2.png',
+	'floor_texture_3.png',
+	'floor_texture_4.png',
+	'floor_texture_5.png',
+];
 const params = {
 	geepWiggleSpeed: 200,
 	geepWiggleIntensity: 1,
 	showPhysics: true,
 	cameraFollow: false,
 	reset,
+	texture: textureFilenames[0]!,
+	textureRepeatCount: 16,
 };
 
 const renderer = new WebGLRenderer({ antialias: true, alpha: true });
@@ -119,11 +131,15 @@ c.far = 30;
 const gui = new GUI();
 
 gui.add(params, 'geepWiggleSpeed', 0, 400);
-gui.add(params, 'geepWiggleIntensity', 0, 2);
+gui.add(params, 'geepWiggleIntensity', 0, 2.5);
 gui.add(params, 'showPhysics').name('Physics Debug Renderer');
 gui.add(params, 'cameraFollow').name('Camera Follows Geep');
+gui
+	.add(params, 'texture')
+	.options(textureFilenames)
+	.onChange((path) => loadTexture(path as string));
+gui.add(params, 'textureRepeatCount', 0.25, 32).onChange((repeat) => setTextureRepeat(repeat));
 gui.add(params, 'reset');
-// end init gui
 
 const geepParentMesh = new SphereGeometry(1, 6, 4);
 const geepParentMaterial = new MeshBasicMaterial({ wireframe: true });
@@ -155,6 +171,17 @@ geepParent.add(geepScene);
 const floorSize = 100;
 const floorPlane = new BoxGeometry(floorSize, floorSize, floorSize);
 const floorMaterial = new MeshStandardMaterial();
+const setTextureRepeat = (repeat: number) => {
+	floorMaterial.map!.repeat.set(repeat, repeat);
+};
+const loadTexture = (path: string) => {
+	const texture = new TextureLoader().load(path);
+	texture.wrapS = RepeatWrapping;
+	texture.wrapT = RepeatWrapping;
+	floorMaterial.map = texture;
+	setTextureRepeat(params.textureRepeatCount);
+};
+loadTexture(params.texture);
 const floorPlaneMesh = new Mesh(floorPlane, floorMaterial);
 floorPlaneMesh.receiveShadow = true;
 floorPlaneMesh.position.y = -floorSize / 2 - 7;

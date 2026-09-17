@@ -10,6 +10,10 @@ https://vxtwitter.com/mega_KOT3D/status/2082806474107949502
 
 <video src="public/vaporeon_wiggle_320.mp4" width="100%" controls></video>
 
+Floor textures "borrowed" from Bungie's OG Marathon 2/Infinity:
+
+https://marathon.bungie.org/story/textures.html
+
 ## Recommended IDE Setup
 
 [VS Code](https://code.visualstudio.com/) + [Vue (Official)](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur).
