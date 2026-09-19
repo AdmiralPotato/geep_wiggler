@@ -296,6 +296,7 @@ const makeRapierDebug = () => {
 const updateRapierDebug = makeRapierDebug();
 
 let lastTime = performance.now();
+let phase = 0;
 function animate() {
 	resize();
 	if (geepParent.position.length() > 10) {
@@ -308,10 +309,9 @@ function animate() {
 	}
 
 	const now = performance.now() / 1000;
-	// const delta = now - lastTime;
+	const delta = now - lastTime;
 	lastTime = now;
-	// geepBones.rotation.y = TAU * params.geepSpinSpeed * 0.005 * now;
-	const phase = params.geepWiggleSpeed * 0.1 * now;
+	phase += params.geepWiggleSpeed * 0.1 * delta;
 	// hip.rotation.x = TAU * (1.55 - Math.cos(phase) * 0.0625);
 	const arms = TAU * Math.cos(phase) * 0.0625 * params.geepWiggleIntensity;
 	const legs = TAU * Math.cos(phase) * 0.125 * params.geepWiggleIntensity;
