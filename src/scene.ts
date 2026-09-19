@@ -231,6 +231,7 @@ const loadTexture = (path: string) => {
 		lastFloorTextureImage = texture.image;
 		updateTextureUVParams();
 	});
+	texture.anisotropy = 4;
 	texture.wrapS = RepeatWrapping;
 	texture.wrapT = RepeatWrapping;
 	floorMaterial.map = texture;
