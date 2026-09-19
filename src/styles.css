@@ -46,3 +46,7 @@ body {
 #inspiration p {
 	width: 50%;
 }
+
+.lil-gui option {
+	background-color: var(--widget-color);
+}
