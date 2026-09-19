@@ -1,6 +1,5 @@
 import {
 	type Bone,
-	// type SkinnedMesh,
 	Scene,
 	WebGLRenderer,
 	PerspectiveCamera,
@@ -24,9 +23,14 @@ import {
 	ConeGeometry,
 	TextureLoader,
 	RepeatWrapping,
+	ColorManagement,
+	NeutralToneMapping,
 } from 'three';
 
-import { GUI } from 'three/examples/jsm/libs/lil-gui.module.min.js';
+// use lil-gui as its own dependency; the one bundled with three.js is 0.17,
+// which has select field bugs that were fixed 3 years ago
+// reference: https://github.com/georgealways/lil-gui/issues/86
+import { GUI } from 'lil-gui';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { RapierPhysics } from 'three/addons/physics/RapierPhysics.js';
@@ -40,7 +44,7 @@ const [physics, geepLTF] = await Promise.all([
 	new Promise<GLTF>((resolve) => gltfLoader.load('geep.glb', resolve)),
 ]);
 const { RAPIER, world } = physics;
-const reset = () => {
+const resetGeepPhysics = () => {
 	const rigidBody: RigidBody = geepParent.userData.physics.body;
 	const zeroVec = new Vector3();
 	const zeroQuat = new Quaternion();
@@ -51,27 +55,64 @@ const reset = () => {
 	controls.target.set(0, 0, 0);
 	controls.update();
 };
-const textureFilenames: string[] = [
-	'floor_texture_0.png',
-	'floor_texture_1.png',
-	'floor_texture_2.png',
-	'floor_texture_3.png',
-	'floor_texture_4.png',
-	'floor_texture_5.png',
-];
-const params = {
+const fileInputField = document.createElement('input');
+fileInputField.type = 'file';
+fileInputField.addEventListener('change', async () => {
+	const file: File | undefined = (fileInputField.files || [])[0];
+	if (file?.name) {
+		console.log('fileInputField file:', file);
+		const fileContentBuffer = await file.arrayBuffer();
+		const hashBuffer = await window.crypto.subtle.digest('SHA-256', fileContentBuffer);
+		const hashString = [...new Uint8Array(hashBuffer)]
+			.map((a) => a.toString(16).padStart(2, '0'))
+			.join('');
+		console.log('fileInputField hashString:', hashString);
+		const blob = new Blob([fileContentBuffer]);
+		const url = URL.createObjectURL(blob);
+		console.log('fileInputField url:', url);
+		textureNamePathMap[file?.name] = url;
+		params.texture = url;
+		floorTextureController.options(textureNamePathMap);
+		floorTextureController.updateDisplay();
+		loadTexture(url);
+	}
+});
+const textureNamePathMap: Record<string, string> = {
+	'floor_texture_0.png': 'floor_texture_0.png',
+	'floor_texture_1.png': 'floor_texture_1.png',
+	'floor_texture_2.png': 'floor_texture_2.png',
+	'floor_texture_3.png': 'floor_texture_3.png',
+	'floor_texture_4.png': 'floor_texture_4.png',
+	'floor_texture_5.png': 'floor_texture_5.png',
+};
+const defaultParams = {
 	geepWiggleSpeed: 200,
 	geepWiggleIntensity: 1,
 	showPhysics: true,
 	cameraFollow: false,
-	reset,
-	texture: textureFilenames[0]!,
+	texture: textureNamePathMap['floor_texture_0.png']!,
 	textureRepeatCount: 16,
+	offsetX: 0,
+	offsetY: 0,
+};
+const resetAllConfigurableSettings = () => {
+	// Object.assign(params, defaultParams);
+	// gui.reset(true);
+	gui.load({ controllers: { ...defaultParams } });
+};
+const params = {
+	...defaultParams,
+	resetAllConfigurableSettings,
+	resetGeepPhysics,
+	uploadTexture: function () {
+		fileInputField.click();
+	},
 };
 
 const renderer = new WebGLRenderer({ antialias: true, alpha: true });
-renderer.setClearColor(0x333333, 1.0);
+renderer.setClearColor(0x000000, 0.0);
 renderer.setPixelRatio(window.devicePixelRatio);
+renderer.toneMapping = NeutralToneMapping;
 export const canvas = renderer.domElement;
 
 const scene = new Scene();
@@ -113,7 +154,7 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = PCFShadowMap;
 // pointLight.shadow.blurSamples = 2;
 pointLight.castShadow = true;
-const shadowSize = 512;
+const shadowSize = 1024;
 pointLight.shadow.radius = 16;
 // console.log('blurSamples', pointLight.shadow.blurSamples);
 pointLight.shadow.bias = 0.001;
@@ -122,24 +163,34 @@ pointLight.shadow.map?.setSize(shadowSize, shadowSize);
 scene.add(pointLight);
 const c = pointLight.shadow.camera;
 c.near = 0.05;
-c.far = 30;
+c.far = 100;
 
 // Position and Color Data
 
 // init gui
 
 const gui = new GUI();
-
+gui.add(params, 'resetAllConfigurableSettings');
 gui.add(params, 'geepWiggleSpeed', 0, 400);
 gui.add(params, 'geepWiggleIntensity', 0, 2.5);
 gui.add(params, 'showPhysics').name('Physics Debug Renderer');
 gui.add(params, 'cameraFollow').name('Camera Follows Geep');
-gui
+gui.add(params, 'resetGeepPhysics');
+const floorTextureController = gui
 	.add(params, 'texture')
-	.options(textureFilenames)
-	.onChange((path) => loadTexture(path as string));
-gui.add(params, 'textureRepeatCount', 0.25, 32).onChange((repeat) => setTextureRepeat(repeat));
-gui.add(params, 'reset');
+	.options(textureNamePathMap)
+	.onChange((path: string) => loadTexture(path));
+let lastFloorTextureImage: HTMLImageElement;
+const updateTextureUVParams = () => {
+	const repeat = params.textureRepeatCount;
+	const { width, height } = lastFloorTextureImage;
+	floorMaterial.map!.repeat.set(repeat, (width / height) * repeat);
+	floorMaterial.map!.offset.set(params.offsetX, params.offsetY);
+};
+gui.add(params, 'textureRepeatCount', 0.25, 32).onChange(updateTextureUVParams);
+gui.add(params, 'offsetX', 0, 1).onChange(updateTextureUVParams);
+gui.add(params, 'offsetY', 0, 1).onChange(updateTextureUVParams);
+gui.add(params, 'uploadTexture').name('Upload Floor Texture');
 
 const geepParentMesh = new SphereGeometry(1, 6, 4);
 const geepParentMaterial = new MeshBasicMaterial({ wireframe: true });
@@ -169,24 +220,27 @@ geepParent.userData.physics = { mass: 1, restitution: 0.99 };
 geepParent.add(geepScene);
 
 const floorSize = 100;
-const floorPlane = new BoxGeometry(floorSize, floorSize, floorSize);
+const floorGeometry = new BoxGeometry(floorSize, floorSize, floorSize);
 const floorMaterial = new MeshStandardMaterial();
-const setTextureRepeat = (repeat: number) => {
-	floorMaterial.map!.repeat.set(repeat, repeat);
-};
 const loadTexture = (path: string) => {
-	const texture = new TextureLoader().load(path);
+	if (floorMaterial.map) {
+		floorMaterial.map.dispose();
+	}
+	const texture = new TextureLoader().load(path, (texture) => {
+		console.log('Floor texture loaded!', texture.image);
+		lastFloorTextureImage = texture.image;
+		updateTextureUVParams();
+	});
 	texture.wrapS = RepeatWrapping;
 	texture.wrapT = RepeatWrapping;
 	floorMaterial.map = texture;
-	setTextureRepeat(params.textureRepeatCount);
 };
 loadTexture(params.texture);
-const floorPlaneMesh = new Mesh(floorPlane, floorMaterial);
-floorPlaneMesh.receiveShadow = true;
-floorPlaneMesh.position.y = -floorSize / 2 - 7;
-floorPlaneMesh.userData.physics = { mass: 0, restitution: 1 };
-scene.add(floorPlaneMesh);
+const floorMesh = new Mesh(floorGeometry, floorMaterial);
+floorMesh.receiveShadow = true;
+floorMesh.position.y = -floorSize / 2 - 7;
+floorMesh.userData.physics = { mass: 0, restitution: 1 };
+scene.add(floorMesh);
 physics.addScene(scene);
 // physics.setMeshVelocity(geepParent, new Vector3(0, 5, 0));
 const geepRigidBody: RigidBody = geepParent.userData.physics.body;
@@ -300,7 +354,7 @@ let phase = 0;
 function animate() {
 	resize();
 	if (geepParent.position.length() > 10) {
-		reset();
+		resetGeepPhysics();
 	}
 	if (params.cameraFollow) {
 		const { x, y, z } = geepParent.position;
@@ -349,6 +403,8 @@ export const cleanup = () => {
 Object.assign(window, {
 	renderer,
 	camera,
+	floorMaterial,
+	floorMesh,
 	geepParent,
 	geepRigidBody,
 	armsShape,
@@ -357,8 +413,8 @@ Object.assign(window, {
 	armsCollider,
 	legsCollider,
 	pointLight,
-	floorPlane,
 	geepScene,
 	physics,
 	RAPIER,
+	ColorManagement,
 });
