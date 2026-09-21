@@ -52,8 +52,6 @@ const resetGeepPhysics = () => {
 	rigidBody.setRotation(zeroQuat, true);
 	rigidBody.setAngvel(zeroQuat, true);
 	rigidBody.setLinvel(zeroVec, true);
-	controls.target.set(0, 0, 0);
-	controls.update();
 };
 const fileInputField = document.createElement('input');
 fileInputField.type = 'file';
@@ -86,12 +84,12 @@ const textureNamePathMap: Record<string, string> = {
 	'floor_texture_5.png': 'floor_texture_5.png',
 };
 const defaultParams = {
-	geepWiggleSpeed: 200,
+	geepWiggleSpeed: 180, // should match any bpm that's a multiple of 30 or 60
 	geepWiggleIntensity: 1,
 	showPhysics: true,
 	cameraFollow: false,
 	texture: textureNamePathMap['floor_texture_0.png']!,
-	textureRepeatCount: 16,
+	textureRepeatCount: 8,
 	offsetX: 0,
 	offsetY: 0,
 };
@@ -118,7 +116,7 @@ export const canvas = renderer.domElement;
 const scene = new Scene();
 
 const camera = new PerspectiveCamera(40, window.innerWidth / window.innerHeight, 1, 1000);
-camera.position.set(10, 10, 20);
+camera.position.set(2, 15, 10);
 // camera.position.set(20, 0, 0); // right side
 // camera.position.set(0, 20, 0); // top side
 
@@ -141,6 +139,8 @@ controls.minDistance = 10;
 controls.maxDistance = 500;
 controls.enableDamping = true;
 controls.dampingFactor = 1;
+controls.target.set(0, -3.5, 0);
+controls.update();
 
 const hemisphereLight = new HemisphereLight(undefined, undefined, 1);
 scene.add(hemisphereLight);
@@ -366,7 +366,7 @@ function animate() {
 	const now = performance.now() / 1000;
 	const delta = now - lastTime;
 	lastTime = now;
-	phase += params.geepWiggleSpeed * 0.1 * delta;
+	phase += params.geepWiggleSpeed * ((TAU / 60) * delta);
 	// hip.rotation.x = TAU * (1.55 - Math.cos(phase) * 0.0625);
 	const arms = TAU * Math.cos(phase) * 0.0625 * params.geepWiggleIntensity;
 	const legs = TAU * Math.cos(phase) * 0.125 * params.geepWiggleIntensity;
