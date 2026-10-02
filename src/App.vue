@@ -19,12 +19,39 @@ watch(canvasHolder, (div) => {
 		id="canvas-holder"
 		ref="canvasHolder"
 	></div>
+	<div
+		id="label-overlay"
+		contenteditable
+		spellcheck="false"
+	>
+		yay! hooray! yippee!
+	</div>
 </template>
 
 <style>
 #overlay {
 	position: relative;
 	z-index: 1;
+}
+#label-overlay {
+	position: absolute;
+	z-index: 1;
+	bottom: 16px;
+	left: 0;
+	right: 0;
+	text-align: center;
+	font-size: 10dvh;
+	line-height: 1.25em;
+	color: #fff;
+	text-shadow:
+		-2px -2px 1px #000,
+		-2px 1px 1px #000,
+		2px -2px 1px #000,
+		2px -1px 1px #000,
+		-2px 2px 1px #000,
+		-1px 2px 1px #000,
+		2px 2px 1px #000,
+		1px 2px 1px #000;
 }
 #canvas-holder {
 	height: 100vh;

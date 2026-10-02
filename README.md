@@ -1,4 +1,4 @@
-# geep_wiggler
+# Geep Wiggler
 
 A silly meme taken too far. A web toy of a Geep from https://GeeperPets.com/ wiggling around to a piece of music that makes a body want to dance.
 

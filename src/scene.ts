@@ -23,7 +23,6 @@ import {
 	ConeGeometry,
 	TextureLoader,
 	RepeatWrapping,
-	ColorManagement,
 	NeutralToneMapping,
 } from 'three';
 
@@ -34,7 +33,7 @@ import { GUI } from 'lil-gui';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { RapierPhysics } from 'three/addons/physics/RapierPhysics.js';
-import type { Collider, RigidBody } from '@dimforge/rapier3d-compat';
+import type { Collider, ImpulseJoint, RigidBody } from '@dimforge/rapier3d-compat';
 
 const TAU = Math.PI * 2;
 
@@ -52,6 +51,17 @@ const resetGeepPhysics = () => {
 	rigidBody.setRotation(zeroQuat, true);
 	rigidBody.setAngvel(zeroQuat, true);
 	rigidBody.setLinvel(zeroVec, true);
+};
+let ropeJoint: ImpulseJoint;
+const updateRopeProperties = () => {
+	const { ropeLength, ropeStiffness } = params;
+	if (ropeJoint) {
+		world.removeImpulseJoint(ropeJoint, true);
+	}
+	const ropeData = RAPIER.JointData.rope(ropeLength, { x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 0 });
+	ropeData.stiffness = ropeStiffness;
+	ropeJoint = world.createImpulseJoint(ropeData, ropeParentRigidBody, geepRigidBody, true);
+	console.log('rope changed', { ropeLength, ropeStiffness });
 };
 const fileInputField = document.createElement('input');
 fileInputField.type = 'file';
@@ -86,7 +96,9 @@ const textureNamePathMap: Record<string, string> = {
 const defaultParams = {
 	geepWiggleSpeed: 180, // should match any bpm that's a multiple of 30 or 60
 	geepWiggleIntensity: 1,
-	showPhysics: true,
+	ropeLength: 5.5,
+	ropeStiffness: 1, // idk a good default value, but low seems rigid, high seems springy?
+	showPhysics: false,
 	cameraFollow: false,
 	texture: textureNamePathMap['floor_texture_0.png']!,
 	textureRepeatCount: 8,
@@ -117,6 +129,7 @@ const scene = new Scene();
 
 const camera = new PerspectiveCamera(40, window.innerWidth / window.innerHeight, 1, 1000);
 camera.position.set(2, 15, 10);
+//camera.position.set(20, 2, 30); // good physics analysis angle
 // camera.position.set(20, 0, 0); // right side
 // camera.position.set(0, 20, 0); // top side
 
@@ -142,7 +155,8 @@ controls.dampingFactor = 1;
 controls.target.set(0, -3.5, 0);
 controls.update();
 
-const hemisphereLight = new HemisphereLight(undefined, undefined, 1);
+const hemisphereLight = new HemisphereLight(0xffffff, 0x000000, 1);
+hemisphereLight.position.set(0, 1, 0);
 scene.add(hemisphereLight);
 // const directionalLight = new DirectionalLight(undefined, 3);
 // directionalLight.castShadow = true;
@@ -173,6 +187,8 @@ const gui = new GUI();
 gui.add(params, 'resetAllConfigurableSettings');
 gui.add(params, 'geepWiggleSpeed', 0, 400);
 gui.add(params, 'geepWiggleIntensity', 0, 2.5);
+gui.add(params, 'ropeLength', 0, 10).onChange(updateRopeProperties);
+gui.add(params, 'ropeStiffness', 0, 1000).onChange(updateRopeProperties);
 gui.add(params, 'showPhysics').name('Physics Debug Renderer');
 gui.add(params, 'cameraFollow').name('Camera Follows Geep');
 gui.add(params, 'resetGeepPhysics');
@@ -209,6 +225,7 @@ const geepBones = geepScene.getObjectByName('geep_bones') as Object3D;
 const skeletonHelper = new SkeletonHelper(geepBones);
 scene.add(skeletonHelper);
 // const hip = geepScene.getObjectByName('hip') as Bone;
+const head = geepScene.getObjectByName('head') as Bone;
 const legL = geepScene.getObjectByName('hind_1_L') as Bone;
 const legR = geepScene.getObjectByName('hind_1_R') as Bone;
 const armL = geepScene.getObjectByName('leg_1_L') as Bone;
@@ -245,6 +262,9 @@ scene.add(floorMesh);
 physics.addScene(scene);
 // physics.setMeshVelocity(geepParent, new Vector3(0, 5, 0));
 const geepRigidBody: RigidBody = geepParent.userData.physics.body;
+const ropeParentRigidBody = world.createRigidBody(RAPIER.RigidBodyDesc.fixed());
+ropeParentRigidBody.setTranslation(new Vector3(0, -1, 0), true);
+updateRopeProperties();
 const legRadius = 1;
 const legLength = 1.125;
 const limbRestitution = 0.5;
@@ -254,6 +274,9 @@ const armsShape = RAPIER.ColliderDesc.capsule(legLength, legRadius)
 const legsShape = RAPIER.ColliderDesc.capsule(legLength, legRadius)
 	.setMass(1000)
 	.setRestitution(limbRestitution);
+const headShape = RAPIER.ColliderDesc.ball(legRadius * 1.5)
+	.setMass(0.1)
+	.setRestitution(limbRestitution * 10);
 // reference: https://github.com/mrdoob/three.js/blob/083a11c06704e31f67f4fbcc988801dbff81e20c/examples/jsm/physics/RapierPhysics.js#L54-L74
 const getConvexShapeFromBufferGeometry = (geometry: BufferGeometry) => {
 	const vertices: number[] = [];
@@ -277,17 +300,18 @@ const getConvexShapeFromBufferGeometry = (geometry: BufferGeometry) => {
 
 	return RAPIER.ColliderDesc.convexMesh(Float32Array.from(vertices))!;
 };
-const geepTopCollisionCone = new ConeGeometry(10, 8, 4);
+const geepTopCollisionCone = new ConeGeometry(2, 1, 4);
 const geepTopCollisionMesh = new BufferGeometry();
 geepTopCollisionMesh.copy(geepTopCollisionCone);
 geepTopCollisionMesh.rotateX(Math.PI);
-geepTopCollisionMesh.translate(0, 3, 0);
+geepTopCollisionMesh.translate(0, 0, 0);
 const topMeshShape = getConvexShapeFromBufferGeometry(geepTopCollisionMesh)
 	.setMass(0.1)
 	.setRestitution(3);
 const topMeshCollider = world.createCollider(topMeshShape, geepRigidBody);
 const armsCollider = world.createCollider(armsShape, geepRigidBody);
 const legsCollider = world.createCollider(legsShape, geepRigidBody);
+const headCollider = world.createCollider(headShape, geepRigidBody);
 const legsOffset = new Vector3(0, -legLength, 0);
 const armsOffset = new Vector3(0, legLength, 0);
 const applyPivotedColliderRotation = (
@@ -322,10 +346,13 @@ const getRelativeOrientationAndFlattenX = (
 // mandatory for propper collider orientation
 const armsPivotHelper = new ArrowHelper(new Vector3(0, -1, 0), undefined, 3, 0x00ff00);
 const legsPivotHelper = new ArrowHelper(new Vector3(0, 1, 0), undefined, 3, 0xff0000);
+const headPivotHelper = new ArrowHelper(new Vector3(0, 1, 0), undefined, 3, 0x0000ff);
 (armsPivotHelper.line.material as MeshBasicMaterial).depthTest = false;
 (legsPivotHelper.line.material as MeshBasicMaterial).depthTest = false;
+(headPivotHelper.line.material as MeshBasicMaterial).depthTest = false;
 armR.add(armsPivotHelper);
 legL.add(legsPivotHelper);
+head.add(headPivotHelper);
 
 const makeRapierDebug = () => {
 	const geometry = new BufferGeometry();
@@ -334,7 +361,13 @@ const makeRapierDebug = () => {
 		new LineBasicMaterial({ color: 0xffffff, vertexColors: true }),
 	);
 	mesh.frustumCulled = false;
-	const showList: Object3D[] = [mesh, skeletonHelper, armsPivotHelper, legsPivotHelper];
+	const showList: Object3D[] = [
+		mesh,
+		skeletonHelper,
+		armsPivotHelper,
+		legsPivotHelper,
+		headPivotHelper,
+	];
 	scene.add(mesh);
 	return () => {
 		if (params.showPhysics) {
@@ -354,7 +387,8 @@ let lastTime = performance.now();
 let phase = 0;
 function animate() {
 	resize();
-	if (geepParent.position.length() > 10) {
+	// reset only when geep is WAY outside of bounds
+	if (geepParent.position.length() > 30) {
 		resetGeepPhysics();
 	}
 	if (params.cameraFollow) {
@@ -377,8 +411,6 @@ function animate() {
 	armR.rotation.z = -arms + TAU * -0.125;
 	spine0.rotation.y = -spine;
 	spine1.rotation.x = -spine;
-	armsPivotHelper.position.x = 0;
-	legsPivotHelper.position.x = 0;
 	applyPivotedColliderRotation(
 		armsCollider,
 		armsOffset,
@@ -388,6 +420,11 @@ function animate() {
 		legsCollider,
 		legsOffset,
 		getRelativeOrientationAndFlattenX(legsPivotHelper, geepParent),
+	);
+	applyPivotedColliderRotation(
+		headCollider,
+		legsOffset,
+		getRelativeOrientationAndFlattenX(headPivotHelper, geepParent),
 	);
 	updateRapierDebug();
 	renderer.render(scene, camera);
@@ -404,6 +441,7 @@ export const cleanup = () => {
 Object.assign(window, {
 	renderer,
 	camera,
+	hemisphereLight,
 	floorMaterial,
 	floorMesh,
 	geepParent,
@@ -417,5 +455,4 @@ Object.assign(window, {
 	geepScene,
 	physics,
 	RAPIER,
-	ColorManagement,
 });
